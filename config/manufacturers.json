@@ -1,0 +1,51 @@
+{
+  "Dell": {
+    "name": "Dell",
+    "application": "Dell Command | Update",
+    "wingetId": "Dell.CommandUpdate",
+    "downloadUrl": "https://www.dell.com/support/home/en-us?app=drivers",
+    "aliases": ["Dell Inc.", "Dell Inc", "Dell"]
+  },
+  "HP": {
+    "name": "HP",
+    "application": "HP Image Assistant",
+    "wingetId": "HP.ImageAssistant",
+    "downloadUrl": "https://support.hp.com/us-en/drivers",
+    "aliases": ["HP Inc.", "HP Inc", "Hewlett-Packard", "Hewlett Packard", "HP"]
+  },
+  "Lenovo": {
+    "name": "Lenovo",
+    "application": "Lenovo System Update",
+    "wingetId": "Lenovo.SystemUpdate",
+    "downloadUrl": "https://support.lenovo.com/us/en/downloads",
+    "aliases": ["LENOVO", "Lenovo Group", "Lenovo"]
+  },
+  "ASUS": {
+    "name": "ASUS",
+    "application": "Armoury Crate",
+    "wingetId": "Asus.ArmouryCrate",
+    "downloadUrl": "https://www.asus.com/support/download-center/",
+    "aliases": ["ASUSTeK Computer Inc.", "ASUSTeK Computer Inc", "ASUSTeK", "ASUS"]
+  },
+  "MSI": {
+    "name": "MSI",
+    "application": "MSI Center",
+    "wingetId": "MSI.MSICenter",
+    "downloadUrl": "https://www.msi.com/support/download",
+    "aliases": ["Micro-Star International Co., Ltd.", "Micro-Star International", "MSI"]
+  },
+  "Acer": {
+    "name": "Acer",
+    "application": "Acer Care Center",
+    "wingetId": null,
+    "downloadUrl": "https://www.acer.com/us-en/support/drivers-and-manuals",
+    "aliases": ["Acer Inc.", "Acer Inc", "Acer"]
+  },
+  "Samsung": {
+    "name": "Samsung",
+    "application": "Samsung Update",
+    "wingetId": null,
+    "downloadUrl": "https://www.samsung.com/us/support/downloads/",
+    "aliases": ["SAMSUNG ELECTRONICS CO., LTD.", "Samsung Electronics", "Samsung"]
+  }
+}

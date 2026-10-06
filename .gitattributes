@@ -1,0 +1,24 @@
+# Normaliza los finales de linea y marca binarios
+* text=auto
+
+# Windows
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell (Windows)
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+*.psd1 text eol=crlf
+
+# Documentos y datos
+*.md   text eol=lf
+*.json text eol=lf
+*.xml  text eol=lf
+
+# Binarios
+*.exe binary
+*.dll binary
+*.ico binary
+*.png binary
+*.jpg binary
+*.zip binary

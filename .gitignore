@@ -1,0 +1,39 @@
+# ============================================
+# SebitAssistan - .gitignore
+# ============================================
+
+# --- Contenido generado (logs y reportes) ---
+logs/*
+!logs/.gitkeep
+reports/*
+!reports/.gitkeep
+
+# --- Carpetas portables: cada usuario coloca su contenido ---
+# apps/: herramientas portatiles de diagnostico
+apps/*
+!apps/.gitkeep
+
+# wifi-profiles/: perfiles WiFi (.xml)
+wifi-profiles/*
+!wifi-profiles/.gitkeep
+
+# Drivers/: controladores exportados/instalados
+Drivers/*
+!Drivers/.gitkeep
+
+# --- Documentacion ampliada (local, no versionada) ---
+DOCUMENTACION.md
+
+# --- Sistema operativo ---
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.DS_Store
+
+# --- Editores / temporales ---
+*.tmp
+*.bak
+*~
+
+# --- PowerShell ---
+*.log
