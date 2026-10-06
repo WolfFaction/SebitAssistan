@@ -1,6 +1,6 @@
 {
   "applicationName": "SebitAssistan - Windows Diagnostic",
-  "version": "2.0.0",
+  "version": "2.0.5",
   "logDirectory": "logs",
   "reportDirectory": "reports",
   "diagnosticsDirectory": "diagnostics",
