@@ -22,3 +22,6 @@
 *.png binary
 *.jpg binary
 *.zip binary
+
+# Terceros (PSWindowsUpdate): no normalizar finales de linea
+lib/** -text

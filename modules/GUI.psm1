@@ -11,7 +11,6 @@ Add-Type -AssemblyName System.Drawing
 
 $script:ActiveJobs = @()
 $script:JobsActiveSince = $null
-$script:PromptInstallAfterSearch = $false
 $global:ActivityVerbose = $true
 
 # Definicion de las acciones automaticas (no forman parte del checklist manual)
@@ -365,7 +364,7 @@ $script:WUInstallJobScript = {
     Import-Module (Join-Path $ModuleRoot "modules\Core.psm1") -Force
     Import-Module (Join-Path $ModuleRoot "modules\WindowsUpdate.psm1") -Force
 
-    Install-WindowsUpdate
+    Invoke-WindowsUpdateInstall
 }
 
 $script:DriversJobScript = {
@@ -421,28 +420,17 @@ $script:OnWUComplete = {
             Write-Log ("Actualizaciones pendientes ({0}):" -f $items.Count) "INFO"
             foreach ($u in $items) { Write-Log ("  - {0}" -f $u) "INFO" }
         }
-
-        # Si la busqueda se lanzo manualmente, ofrecer instalar ahora
-        if ($script:PromptInstallAfterSearch -and $pending -gt 0) {
-            $script:PromptInstallAfterSearch = $false
-            $answer = [System.Windows.Forms.MessageBox]::Show(
-                "Se encontraron $pending actualizacion(es) pendiente(s).`n`n¿Desea descargarlas e instalarlas ahora?`n`nEl equipo NO se reiniciara automaticamente.",
-                "Windows Update",
-                "YesNo",
-                "Question"
-            )
-            if ($answer -eq "Yes") { Start-WindowsUpdateInstall -NoConfirm }
-        }
     }
 }
 
 $script:OnWUInstallComplete = {
     param($rec)
 
-    $installed = 0; $failed = 0; $reboot = $false; $pending = 0
+    $installed = 0; $failed = 0; $reboot = $false; $pending = 0; $total = 0
     $items = @()
     foreach ($l in $rec.Lines) {
-        if ($l -like "@@WU_INSTALLED@@*") { [void][int]::TryParse($l.Substring(16), [ref]$installed) }
+        if ($l -like "@@WU_TOTAL@@*") { [void][int]::TryParse($l.Substring(12), [ref]$total) }
+        elseif ($l -like "@@WU_INSTALLED@@*") { [void][int]::TryParse($l.Substring(16), [ref]$installed) }
         elseif ($l -like "@@WU_FAILED@@*") { [void][int]::TryParse($l.Substring(13), [ref]$failed) }
         elseif ($l -like "@@WU_REBOOT@@*") { $reboot = ($l.Substring(13) -eq "True") }
         elseif ($l -like "@@WU_PENDING@@*") { [void][int]::TryParse($l.Substring(14), [ref]$pending) }
@@ -455,7 +443,7 @@ $script:OnWUInstallComplete = {
     elseif ($pending -gt 0 -or $reboot) { $status = "Warning" }
     else { $status = "Passed" }
 
-    Set-AutoResult -Id "wu" -Status $status -Result ("Instaladas: $installed; Fallidas: $failed; Pendientes: $pending; Reinicio requerido: $reboot")
+    Set-AutoResult -Id "wu" -Status $status -Result ("Instaladas: $installed/$total; Fallidas: $failed; Pendientes: $pending; Reinicio requerido: $reboot")
 
     Write-Log ("Instalacion de Windows Update finalizada -> Instaladas: {0}; Fallidas: {1}; Pendientes: {2}; Reinicio: {3}" -f $installed, $failed, $pending, $reboot) "INFO"
 
@@ -466,6 +454,15 @@ $script:OnWUInstallComplete = {
             "OK",
             "Warning"
         ) | Out-Null
+    }
+    elseif ($installed -eq 0 -and $total -gt 0 -and $pending -gt 0) {
+        $answer = [System.Windows.Forms.MessageBox]::Show(
+            "No se pudo instalar automaticamente (revise el HResult en la ventana de Actividad).`n`n¿Desea abrir Windows Update de Windows para instalarlas manualmente?",
+            "Windows Update",
+            "YesNo",
+            "Question"
+        )
+        if ($answer -eq "Yes") { Start-Process "ms-settings:windowsupdate" }
     }
     elseif ($pending -eq 0 -and $failed -eq 0) {
         [System.Windows.Forms.MessageBox]::Show(
@@ -540,23 +537,14 @@ function Start-WindowsUpdateJob {
 function Start-WindowsUpdateInstall {
     param([switch]$NoConfirm)
 
-    $count = 0
-    if ($global:WindowsUpdateItems) { $count = @($global:WindowsUpdateItems).Count }
-
     if (-not $NoConfirm) {
-        if ($count -gt 0) {
-            $msg = "Se descargaran e instalaran $count actualizacion(es) pendiente(s).`n`nEl equipo NO se reiniciara automaticamente.`n`n¿Continuar?"
-        }
-        else {
-            $msg = "Aun no se ha ejecutado la busqueda, pero se buscaran, descargaran e instalaran todas las actualizaciones pendientes.`n`nEl equipo NO se reiniciara automaticamente.`n`n¿Continuar?"
-        }
-
+        $msg = "La aplicacion buscara, descargara e instalara TODAS las actualizaciones pendientes de Windows.`n`nEl equipo NO se reiniciara automaticamente.`n`n¿Continuar?"
         $confirm = [System.Windows.Forms.MessageBox]::Show($msg, "Instalar actualizaciones", "YesNo", "Warning")
         if ($confirm -ne "Yes") { return }
     }
 
     Set-AutoResult -Id "wu" -Status "Running" -Result "Instalando actualizaciones..."
-    Write-Log "Iniciando descarga e instalacion de actualizaciones..." "INFO"
+    Write-Log "Iniciando busqueda, descarga e instalacion de actualizaciones..." "INFO"
     Start-ActivityJob -Name "Instalar actualizaciones" -ScriptBlock $script:WUInstallJobScript -ArgumentList @($global:ProjectRoot) -AutoId "wu" -OnComplete $script:OnWUInstallComplete | Out-Null
 }
 
@@ -637,47 +625,6 @@ function Invoke-SystemCommand {
         Write-Log ("No se pudo ejecutar '{0}': {1}" -f $Command.name, $_) "ERROR"
         [System.Windows.Forms.MessageBox]::Show("No se pudo ejecutar '$($Command.name)':`n$_", "Comando", "OK", "Warning") | Out-Null
     }
-}
-
-# Ventana con el listado completo de actualizaciones pendientes
-function Show-UpdatesDialog {
-    $items = @($global:WindowsUpdateItems)
-
-    if ($items.Count -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show("No hay informacion de actualizaciones. Ejecute 'Windows Update' primero.", "Windows Update", "OK", "Information") | Out-Null
-        return
-    }
-
-    $dlg = New-Object System.Windows.Forms.Form
-    $dlg.Text = "Actualizaciones pendientes ($($items.Count))"
-    $dlg.ClientSize = New-Object System.Drawing.Size(760, 480)
-    $dlg.StartPosition = "CenterScreen"
-    $dlg.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 30)
-
-    $tb = New-Object System.Windows.Forms.TextBox
-    $tb.Location = New-Object System.Drawing.Point(10, 10)
-    $tb.Size = New-Object System.Drawing.Size(740, 420)
-    $tb.Multiline = $true
-    $tb.ReadOnly = $true
-    $tb.ScrollBars = "Both"
-    $tb.WordWrap = $false
-    $tb.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 20)
-    $tb.ForeColor = [System.Drawing.Color]::Gainsboro
-    $tb.Font = New-Object System.Drawing.Font("Consolas", 9)
-    $tb.Text = ($items | ForEach-Object { "$_" }) -join "`r`n"
-    $dlg.Controls.Add($tb)
-
-    $btnClose = New-Object System.Windows.Forms.Button
-    $btnClose.Text = "Cerrar"
-    $btnClose.Location = New-Object System.Drawing.Point(650, 438)
-    $btnClose.Size = New-Object System.Drawing.Size(100, 30)
-    $btnClose.FlatStyle = "Flat"
-    $btnClose.BackColor = [System.Drawing.Color]::FromArgb(62, 62, 66)
-    $btnClose.ForeColor = [System.Drawing.Color]::Gainsboro
-    $btnClose.Add_Click({ $dlg.Close() })
-    $dlg.Controls.Add($btnClose)
-
-    [void]$dlg.ShowDialog()
 }
 
 # Cuadro de entrada de texto sencillo (tema oscuro)
@@ -768,7 +715,7 @@ function New-MainForm {
     Register-ActivitySink
 
     $form = New-Object System.Windows.Forms.Form
-    $form.Text = "Windows Diagnostic Assistant"
+    $form.Text = "SebitAsistan - Windows Diagnostic"
     $form.ClientSize = New-Object System.Drawing.Size(1000, 845)
     $form.StartPosition = "CenterScreen"
     $form.FormBorderStyle = "FixedDialog"
@@ -1003,31 +950,19 @@ function New-MainForm {
     $btnMfr = New-Object System.Windows.Forms.Button
     $btnMfr.Text = "App fabricante"
     $btnMfr.Location = New-Object System.Drawing.Point(10, 28)
-    $btnMfr.Size = New-Object System.Drawing.Size(118, 30)
+    $btnMfr.Size = New-Object System.Drawing.Size(200, 30)
     $toolsPanel.Controls.Add($btnMfr)
-
-    $btnWU = New-Object System.Windows.Forms.Button
-    $btnWU.Text = "Buscar updates"
-    $btnWU.Location = New-Object System.Drawing.Point(132, 28)
-    $btnWU.Size = New-Object System.Drawing.Size(118, 30)
-    $toolsPanel.Controls.Add($btnWU)
-
-    $btnWUDetail = New-Object System.Windows.Forms.Button
-    $btnWUDetail.Text = "Ver updates"
-    $btnWUDetail.Location = New-Object System.Drawing.Point(254, 28)
-    $btnWUDetail.Size = New-Object System.Drawing.Size(118, 30)
-    $toolsPanel.Controls.Add($btnWUDetail)
 
     $btnWUInstall = New-Object System.Windows.Forms.Button
     $btnWUInstall.Text = "Instalar updates"
-    $btnWUInstall.Location = New-Object System.Drawing.Point(376, 28)
-    $btnWUInstall.Size = New-Object System.Drawing.Size(118, 30)
+    $btnWUInstall.Location = New-Object System.Drawing.Point(220, 28)
+    $btnWUInstall.Size = New-Object System.Drawing.Size(200, 30)
     $toolsPanel.Controls.Add($btnWUInstall)
 
     $btnDiag = New-Object System.Windows.Forms.Button
     $btnDiag.Text = "Diagnosticos"
-    $btnDiag.Location = New-Object System.Drawing.Point(498, 28)
-    $btnDiag.Size = New-Object System.Drawing.Size(118, 30)
+    $btnDiag.Location = New-Object System.Drawing.Point(430, 28)
+    $btnDiag.Size = New-Object System.Drawing.Size(200, 30)
     $toolsPanel.Controls.Add($btnDiag)
 
     $btnMfr.Add_Click({
@@ -1061,13 +996,6 @@ function New-MainForm {
             }
         }
     })
-
-    $btnWU.Add_Click({
-        $script:PromptInstallAfterSearch = $true
-        Invoke-AutoAction -Id "wu"
-    })
-
-    $btnWUDetail.Add_Click({ Show-UpdatesDialog })
 
     $btnWUInstall.Add_Click({ Start-WindowsUpdateInstall })
 

@@ -2,6 +2,25 @@
 
 Todas las modificaciones relevantes de este proyecto se documentan en este archivo.
 
+## [2.0.7] - 2026-10-08
+
+- **Instalación de Windows Update mediante PSWindowsUpdate**:
+  - Se incluye el módulo **PSWindowsUpdate** (Michal Gajda, licencia MIT) en `lib/PSWindowsUpdate/`.
+  - La instalación usa `Install-WindowsUpdate -AcceptAll -IgnoreReboot`, que es la vía que funcionó en pruebas (frente a la API COM directa, que fallaba con `0x80131501`).
+  - Se mantiene la API COM como respaldo si PSWindowsUpdate no está disponible.
+  - Se conserva el registro de progreso y el resumen (instaladas/fallidas/pendientes/reinicio).
+
+## [2.0.6] - 2026-10-07
+
+- **Corrección de la instalación de Windows Update** (fallaban todas las actualizaciones con `0x80131501`):
+  - La instalación arma **una sola colección**, **descarga en lote** e **instala en lote** (patrón documentado).
+  - Si la API COM falla, se usa el **orquestador de Windows Update (`UsoClient`)**, la misma vía que Configuración, y se sondea el estado hasta 8 minutos.
+  - Si todo falla, ofrece **abrir Windows Update de Windows** para instalar manualmente.
+  - Se registra el **ResultCode y el HResult** de cada actualización en la ventana de actividad.
+  - Se añade una línea de diagnóstico (usuario, elevación, PID, versión de PowerShell).
+- **Interfaz**: se elimina "Ver updates" y "Buscar updates". Ahora **"Instalar updates" hace todo** (busca, descarga e instala).
+- **Comandos**: se elimina la entrada "Configuracion de Windows".
+
 ## [2.0.5] - 2026-10-07
 
 Interfaz Windows Forms con **tema oscuro** y **ventana de actividad en vivo** (incluye detalles en nivel DEBUG).

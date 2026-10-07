@@ -5,13 +5,13 @@ Herramienta **portable** de diagnóstico y soporte para equipos Windows, pensada
 Se ejecuta con permisos de administrador, automatiza las tareas habituales de
 diagnóstico y mantenimiento, y permite al técnico completar un checklist manual.
 
-**Versión:** 2.0.5 · **Licencia:** MIT
+**Versión:** 2.0.7 · **Licencia:** MIT
 
 ## Características
 
 - **Información del equipo**: fabricante, modelo, número de serie, Windows, CPU y RAM.
 - **Checklist manual** de verificación (pantalla, teclado, cámara, puertos, etc.).
-- **Windows Update**: busca actualizaciones pendientes y permite ver el listado completo.
+- **Windows Update**: busca e instala las actualizaciones pendientes (no reinicia automáticamente).
 - **Diagnósticos**: red, almacenamiento, memoria y hardware (no destructivos).
 - **Aplicaciones portátiles**: ejecuta las herramientas de la carpeta `apps/`.
 - **Drivers**: exporta los controladores del equipo e instálalos desde la carpeta `Drivers/`.
@@ -57,3 +57,7 @@ programas. Consulte [SECURITY.md](SECURITY.md) para más detalles.
 ## Licencia
 
 Distribuido bajo la **Licencia MIT**. Consulte [LICENSE](LICENSE).
+
+## Créditos
+
+- **PSWindowsUpdate** de Michal Gajda (licencia MIT), incluido en `lib/PSWindowsUpdate/` para la instalación de actualizaciones de Windows. Ver `lib/PSWindowsUpdate/LICENSE`.

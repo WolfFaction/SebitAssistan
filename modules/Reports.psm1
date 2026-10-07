@@ -178,7 +178,7 @@ function New-DiagnosticReport {
 
     $html += @"
         <div class="footer">
-            <p>SebitAssistan v2.0.5 - Windows Diagnostic Assistant</p>
+            <p>SebitAssistan v2.0.7 - Windows Diagnostic Assistant</p>
         </div>
     </div>
 </body>

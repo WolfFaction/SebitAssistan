@@ -14,7 +14,6 @@
     { "name": "Programas y caracteristicas",    "target": "appwiz.cpl" },
     { "name": "Panel de control",               "target": "control" },
     { "name": "Informacion del sistema",        "target": "msinfo32.exe" },
-    { "name": "Configuracion de Windows",       "target": "ms-settings:" },
     { "name": "Windows Update (configuracion)", "target": "ms-settings:windowsupdate" },
     { "name": "Monitor de recursos",            "target": "resmon.exe" },
     { "name": "Editor del Registro",            "target": "regedit.exe" },
