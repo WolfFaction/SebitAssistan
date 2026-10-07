@@ -100,8 +100,9 @@ function Invoke-WindowsUpdateCom {
 
             $installer = $session.CreateUpdateInstaller()
             $installer.Updates = $collection
-            $installer.IsForced = $false
-            $installer.AllowSourcePrompts = $false
+            # Algunas versiones del objeto COM no exponen estas propiedades: no romper si fallan
+            try { $installer.IsForced = $false } catch { }
+            try { $installer.AllowSourcePrompts = $false } catch { }
             $installResult = $installer.Install()
 
             for ($i = 0; $i -lt $collection.Count; $i++) {
@@ -154,13 +155,39 @@ function Invoke-WindowsUpdateInstall {
         }
         catch { }
 
+        # Banner de version (para confirmar que se ejecuta el codigo actualizado)
+        $appVersion = "?"
+        try {
+            $cfg = Get-Content -LiteralPath (Join-Path $global:ProjectRoot "config\config.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+            if ($cfg.version) { $appVersion = $cfg.version }
+        }
+        catch { }
+        Write-Output ("[WU] SebitAssistan {0} - motor de instalacion" -f $appVersion)
+
         $modulePath = Get-PSWindowsUpdateModulePath
 
         if ($modulePath) {
             Write-Output ("Usando PSWindowsUpdate: {0}" -f $modulePath)
             Write-Log ("Usando PSWindowsUpdate: {0}" -f $modulePath) "INFO"
-            Import-Module $modulePath -Force
 
+            # Importar y verificar que el cmdlet existe realmente
+            try {
+                Import-Module $modulePath -Force -ErrorAction Stop
+                $wuCmd = Get-Command "PSWindowsUpdate\Install-WindowsUpdate" -ErrorAction SilentlyContinue
+                if (-not $wuCmd) {
+                    throw "No se encontro el cmdlet 'PSWindowsUpdate\Install-WindowsUpdate' tras importar el modulo."
+                }
+                $pswuVer = (Get-Module PSWindowsUpdate | Select-Object -First 1).Version
+                Write-Output ("PSWindowsUpdate listo (version {0})" -f $pswuVer)
+            }
+            catch {
+                Write-Output ("No se pudo preparar PSWindowsUpdate: {0}" -f $_)
+                Write-Log ("Fallo el import de PSWindowsUpdate: {0}" -f $_) "WARNING"
+                $modulePath = $null
+            }
+        }
+
+        if ($modulePath) {
             # Buscar
             Write-Output "Buscando actualizaciones..."
             $list = @(PSWindowsUpdate\Get-WindowsUpdate -ErrorAction Stop)
@@ -187,7 +214,7 @@ function Invoke-WindowsUpdateInstall {
             }
         }
         else {
-            Write-Output "PSWindowsUpdate no esta disponible; usando la API COM de respaldo."
+            Write-Output "PSWindowsUpdate no disponible; usando la API COM de respaldo."
             $comResult = Invoke-WindowsUpdateCom
             $installed = $comResult.Installed
             $failed = $comResult.Failed

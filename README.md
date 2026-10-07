@@ -5,7 +5,7 @@ Herramienta **portable** de diagnóstico y soporte para equipos Windows, pensada
 Se ejecuta con permisos de administrador, automatiza las tareas habituales de
 diagnóstico y mantenimiento, y permite al técnico completar un checklist manual.
 
-**Versión:** 2.0.7 · **Licencia:** MIT
+**Versión:** 2.0.8 · **Licencia:** MIT
 
 ## Características
 

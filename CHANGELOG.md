@@ -2,6 +2,14 @@
 
 Todas las modificaciones relevantes de este proyecto se documentan en este archivo.
 
+## [2.0.8] - 2026-10-08
+
+- **Causa raíz confirmada del fallo de Windows Update**: el código antiguo asignaba `$installer.IsSilent`, propiedad que el objeto COM no expone en este equipo, lanzando `0x80131501` en cada actualización. Ya no se usa.
+- Se copió el archivo `PSWindowsUpdate.psm1` (declarado como `NestedModules`) que faltaba en `lib/PSWindowsUpdate/`.
+- El import de PSWindowsUpdate ahora se **verifica** (se comprueba que exista el cmdlet) y, si falla, se registra el motivo y se pasa al respaldo COM.
+- El respaldo COM ya no asigna `IsForced`/`AllowSourcePrompts` sin protección.
+- Se añade un **banner de versión** en la ventana de actividad para confirmar qué versión del motor se ejecuta.
+
 ## [2.0.7] - 2026-10-08
 
 - **Instalación de Windows Update mediante PSWindowsUpdate**:
