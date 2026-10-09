@@ -27,33 +27,4 @@ function Initialize-Checklist {
     return $tasks
 }
 
-function Update-ChecklistItem {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [array]$Checklist,
-
-        [Parameter(Mandatory = $true)]
-        [int]$Id,
-
-        [Parameter(Mandatory = $true)]
-        [string]$Status,
-
-        [string]$Result = "",
-        [string]$Notes = ""
-    )
-
-    foreach ($task in $Checklist) {
-        if ($task.Id -eq $Id) {
-            $task.Status = $Status
-            if ($PSBoundParameters.ContainsKey('Result')) { $task.Result = $Result }
-            if ($PSBoundParameters.ContainsKey('Notes')) { $task.Notes = $Notes }
-            $task.Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-            break
-        }
-    }
-
-    return $Checklist
-}
-
-Export-ModuleMember -Function Initialize-Checklist, Update-ChecklistItem
+Export-ModuleMember -Function Initialize-Checklist

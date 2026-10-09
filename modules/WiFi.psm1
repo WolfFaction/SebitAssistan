@@ -120,28 +120,4 @@ function Import-SystemWifiProfiles {
     return $result
 }
 
-# Lista los perfiles registrados en Windows (informativo)
-function Get-SavedWifiProfiles {
-    [CmdletBinding()]
-    param()
-
-    try {
-        $lines = netsh wlan show profiles
-        $profiles = @()
-        foreach ($line in $lines) {
-            if ($line -match ":\s*(.+)$") {
-                $name = $matches[1].Trim()
-                if ($name -and $name -notmatch "^(yes|no|si|sí|\d+)$") {
-                    $profiles += $name
-                }
-            }
-        }
-        return @($profiles | Select-Object -Unique | Sort-Object)
-    }
-    catch {
-        Write-Log "Error listando perfiles WiFi: $_" "ERROR"
-        return @()
-    }
-}
-
-Export-ModuleMember -Function Get-WifiProfileFiles, Connect-SavedWifiProfile, Import-SystemWifiProfiles, Get-SavedWifiProfiles
+Export-ModuleMember -Function Get-WifiProfileFiles, Connect-SavedWifiProfile, Import-SystemWifiProfiles

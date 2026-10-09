@@ -2,6 +2,31 @@
 
 Todas las modificaciones relevantes de este proyecto se documentan en este archivo.
 
+## [2.1.0] - 2026-10-10
+
+- **Barra superior**: nuevos botones **Apagar**, **Reiniciar** y **Reporte** (con el alias del técnico al guardar).
+- **Reportes**: piden el **alias** de quien guarda; el nombre del archivo incluye el alias y el HTML muestra "Tecnico: <alias>".
+- **Comandos del sistema**: además de la lista desplegable, se puede **escribir cualquier comando** y ejecutarlo (comportamiento tipo Ejecutar de Windows / Win+R), también con Enter.
+- **Activar Windows**: nuevo botón que activa Windows con la **clave digital OEM** del equipo (`Get-CimInstance SoftwareLicensingService`.OA3xOriginalProductKey → `slmgr /ipk` + `slmgr /ato`). Usa `slmgr.exe` si existe, o `slmgr.vbs`. La clave se muestra enmascarada y no se registra completa.
+- **apps/**: además de `.exe`, ahora detecta y ejecuta **`.bat` y `.cmd`**; se lanzan desde su propia carpeta.
+- **Limpieza**:
+  - Eliminada la carpeta `diagnostics/` (no se usaba).
+  - Eliminado `lib/PSWindowsUpdate` y toda la ruta de instalación (no se usa; la instalación se delega a Configuración).
+  - Eliminados los módulos `Camera.psm1` y `Microphone.psm1` (sin uso en la interfaz).
+  - Eliminadas funciones sin uso: `Get-SavedWifiProfiles`, `Update-ChecklistItem`, `Get-ManufacturerApplication`.
+- **Corrección**: los callbacks de fin de tarea ya **no abren ventanas de aviso** (el resultado se muestra en la Actividad); se corrigió una reentrada del temporizador que repetía esos avisos en cascada; y se corrigió el comando de **Apagar/Reiniciar** (se usaba un comentario `/c` con espacios que `shutdown.exe` rechazaba).
+
+## [2.0.9] - 2026-10-08
+
+- Se **elimina la instalación automática de actualizaciones** desde la app: lanzaba una ventana del instalador por cada actualización (drivers incluidos), lo que resultaba inmanejable.
+- El botón **"Windows Update"** ahora **abre el apartado de Windows Update en Configuración** (`ms-settings:windowsupdate`).
+- Nuevo botón **"Limpiar WU"** que reinicia los componentes de Windows Update:
+  - Detiene `wuauserv`, `bits`, `cryptsvc` y `msiserver`.
+  - Renombra `SoftwareDistribution` y `catroot2` a `.old`.
+  - Reinicia los servicios.
+  - Pide confirmación y muestra cada paso en la ventana de Actividad.
+- Se conserva la búsqueda de actualizaciones (solo lectura) para el reporte.
+
 ## [2.0.8] - 2026-10-08
 
 - **Causa raíz confirmada del fallo de Windows Update**: el código antiguo asignaba `$installer.IsSilent`, propiedad que el objeto COM no expone en este equipo, lanzando `0x80131501` en cada actualización. Ya no se usa.

@@ -5,19 +5,20 @@ Herramienta **portable** de diagnóstico y soporte para equipos Windows, pensada
 Se ejecuta con permisos de administrador, automatiza las tareas habituales de
 diagnóstico y mantenimiento, y permite al técnico completar un checklist manual.
 
-**Versión:** 2.0.8 · **Licencia:** MIT
+**Versión:** 2.1.0 · **Licencia:** MIT
 
 ## Características
 
 - **Información del equipo**: fabricante, modelo, número de serie, Windows, CPU y RAM.
-- **Checklist manual** de verificación (pantalla, teclado, cámara, puertos, etc.).
-- **Windows Update**: busca e instala las actualizaciones pendientes (no reinicia automáticamente).
+- **Apagar / Reiniciar** el equipo desde la barra superior (con confirmación).
+- **Checklist manual** de verificación (pantalla, teclado, puertos, etc.).
 - **Diagnósticos**: red, almacenamiento, memoria y hardware (no destructivos).
-- **Aplicaciones portátiles**: ejecuta las herramientas de la carpeta `apps/`.
+- **Windows Update**: abre el panel de Configuración y permite limpiar/reiniciar sus componentes.
+- **Activar Windows**: activa Windows con la clave digital OEM del equipo (`slmgr /ipk` + `/ato`).
+- **Aplicaciones portátiles**: ejecuta las herramientas de la carpeta `apps/` (`.exe`, `.bat` o `.cmd`).
 - **Drivers**: exporta los controladores del equipo e instálalos desde la carpeta `Drivers/`.
 - **WiFi**: conexión mediante perfiles guardados en `wifi-profiles/`.
-- **Comandos del sistema**: acceso rápido a herramientas como visor de eventos, servicios o administración de discos.
-- **Cámara y micrófono**: detección automática y validación manual.
+- **Comandos del sistema**: elija de la lista desplegable o **escriba cualquier comando** (como el cuadro Ejecutar de Windows).
 - **Enlaces personalizados** y **reportes HTML**.
 - **Ventana de actividad** en vivo y tema oscuro.
 
@@ -39,13 +40,13 @@ La aplicación funciona desde cualquier ruta, incluso con espacios.
 
 Las siguientes carpetas se distribuyen vacías; cada usuario coloca en ellas su propio contenido:
 
-- `apps/` — herramientas portátiles de diagnóstico.
+- `apps/` — herramientas portátiles de diagnóstico (`.exe`, `.bat`, `.cmd`).
 - `Drivers/` — controladores exportados o para instalar.
 - `wifi-profiles/` — perfiles WiFi (`.xml`).
 
 ## Reportes y logs
 
-- Los reportes se generan en `reports/` como `Report-YYYY-MM-DD-HH-mm-ss.html`.
+- El reporte pide el **alias del técnico** y se guarda en `reports/` como `Report-<alias>-YYYY-MM-DD-HH-mm-ss.html`.
 - La actividad se registra en `logs/`.
 
 ## Seguridad
@@ -57,7 +58,3 @@ programas. Consulte [SECURITY.md](SECURITY.md) para más detalles.
 ## Licencia
 
 Distribuido bajo la **Licencia MIT**. Consulte [LICENSE](LICENSE).
-
-## Créditos
-
-- **PSWindowsUpdate** de Michal Gajda (licencia MIT), incluido en `lib/PSWindowsUpdate/` para la instalación de actualizaciones de Windows. Ver `lib/PSWindowsUpdate/LICENSE`.

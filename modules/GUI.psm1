@@ -242,6 +242,7 @@ function Start-ActivityJob {
         Lines      = (New-Object System.Collections.ArrayList)
         OnComplete = $OnComplete
         AutoId     = $AutoId
+        Handled    = $false
     }
 
     if ($script:ActiveJobs.Count -eq 0) { $script:JobsActiveSince = Get-Date }
@@ -257,6 +258,7 @@ function Update-ActivityJobs {
     }
 
     $remaining = @()
+    $completed = @()
 
     foreach ($rec in $script:ActiveJobs) {
         $job = $rec.Job
@@ -292,21 +294,30 @@ function Update-ActivityJobs {
                 Write-Log ("La tarea '{0}' termino con estado {1}" -f $rec.Name, $state) "ERROR"
             }
 
-            if ($rec.OnComplete) {
-                try { & $rec.OnComplete $rec }
-                catch { Write-Log ("Error procesando resultado de '{0}': {1}" -f $rec.Name, $_) "ERROR" }
-            }
-
             Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+            $completed += $rec
         }
         else {
             $remaining += $rec
         }
     }
 
+    # Actualizar la lista y detener el temporizador ANTES de los callbacks.
+    # Si un callback abre un MessageBox (que bombea mensajes), no se vuelve a
+    # procesar la misma tarea en cascada.
     $script:ActiveJobs = $remaining
+    if ($script:ActiveJobs.Count -eq 0 -and $global:JobTimer) { $global:JobTimer.Stop() }
+
+    foreach ($rec in $completed) {
+        if ($rec.Handled) { continue }
+        $rec.Handled = $true
+        if ($rec.OnComplete) {
+            try { & $rec.OnComplete $rec }
+            catch { Write-Log ("Error procesando resultado de '{0}': {1}" -f $rec.Name, $_) "ERROR" }
+        }
+    }
+
     if ($script:ActiveJobs.Count -eq 0) {
-        if ($global:JobTimer) { $global:JobTimer.Stop() }
         Set-ProgressMarquee -Enabled $false
         Update-OverallProgress
         Update-UiStatus "Tareas finalizadas"
@@ -358,13 +369,22 @@ $script:WingetJobScript = {
     Write-Output ("@@EXITCODE@@" + $LASTEXITCODE)
 }
 
-$script:WUInstallJobScript = {
+$script:ResetWUJobScript = {
     param($ModuleRoot)
 
     Import-Module (Join-Path $ModuleRoot "modules\Core.psm1") -Force
     Import-Module (Join-Path $ModuleRoot "modules\WindowsUpdate.psm1") -Force
 
-    Invoke-WindowsUpdateInstall
+    Reset-WindowsUpdateComponents
+}
+
+$script:ActivationJobScript = {
+    param($ModuleRoot)
+
+    Import-Module (Join-Path $ModuleRoot "modules\Core.psm1") -Force
+    Import-Module (Join-Path $ModuleRoot "modules\Activation.psm1") -Force
+
+    Invoke-WindowsActivation
 }
 
 $script:DriversJobScript = {
@@ -423,55 +443,30 @@ $script:OnWUComplete = {
     }
 }
 
-$script:OnWUInstallComplete = {
+$script:OnResetComplete = {
     param($rec)
 
-    $installed = 0; $failed = 0; $reboot = $false; $pending = 0; $total = 0
-    $items = @()
+    Write-Log "Limpieza de Windows Update finalizada. Se recomienda reiniciar el equipo." "INFO"
+    Update-UiStatus "Limpieza de Windows Update finalizada"
+}
+
+$script:OnActivationComplete = {
+    param($rec)
+
+    $status = "UNKNOWN"
     foreach ($l in $rec.Lines) {
-        if ($l -like "@@WU_TOTAL@@*") { [void][int]::TryParse($l.Substring(12), [ref]$total) }
-        elseif ($l -like "@@WU_INSTALLED@@*") { [void][int]::TryParse($l.Substring(16), [ref]$installed) }
-        elseif ($l -like "@@WU_FAILED@@*") { [void][int]::TryParse($l.Substring(13), [ref]$failed) }
-        elseif ($l -like "@@WU_REBOOT@@*") { $reboot = ($l.Substring(13) -eq "True") }
-        elseif ($l -like "@@WU_PENDING@@*") { [void][int]::TryParse($l.Substring(14), [ref]$pending) }
-        elseif ($l -like "@@UPDATE@@*") { $items += $l.Substring(10) }
+        if ($l -like "@@ACTIVATION@@*") { $status = $l.Substring(14) }
     }
 
-    $global:WindowsUpdateItems = $items
-
-    if ($failed -gt 0) { $status = "Failed" }
-    elseif ($pending -gt 0 -or $reboot) { $status = "Warning" }
-    else { $status = "Passed" }
-
-    Set-AutoResult -Id "wu" -Status $status -Result ("Instaladas: $installed/$total; Fallidas: $failed; Pendientes: $pending; Reinicio requerido: $reboot")
-
-    Write-Log ("Instalacion de Windows Update finalizada -> Instaladas: {0}; Fallidas: {1}; Pendientes: {2}; Reinicio: {3}" -f $installed, $failed, $pending, $reboot) "INFO"
-
-    if ($reboot) {
-        [System.Windows.Forms.MessageBox]::Show(
-            "La instalacion termino. Se requiere REINICIAR el equipo para completar los cambios.`n`nLa aplicacion no reinicia automaticamente.",
-            "Windows Update",
-            "OK",
-            "Warning"
-        ) | Out-Null
+    $texto = switch ($status) {
+        "OK"     { "Activacion finalizada correctamente." }
+        "NOKEY"  { "No se encontro clave digital OEM en este equipo." }
+        "ERROR"  { "No se pudo completar la activacion." }
+        default  { "Proceso de activacion finalizado." }
     }
-    elseif ($installed -eq 0 -and $total -gt 0 -and $pending -gt 0) {
-        $answer = [System.Windows.Forms.MessageBox]::Show(
-            "No se pudo instalar automaticamente (revise el HResult en la ventana de Actividad).`n`n¿Desea abrir Windows Update de Windows para instalarlas manualmente?",
-            "Windows Update",
-            "YesNo",
-            "Question"
-        )
-        if ($answer -eq "Yes") { Start-Process "ms-settings:windowsupdate" }
-    }
-    elseif ($pending -eq 0 -and $failed -eq 0) {
-        [System.Windows.Forms.MessageBox]::Show(
-            "Todas las actualizaciones se instalaron correctamente.",
-            "Windows Update",
-            "OK",
-            "Information"
-        ) | Out-Null
-    }
+
+    Write-Log ("Activacion de Windows: {0} - {1}" -f $status, $texto) "INFO"
+    Update-UiStatus "Activar Windows: $texto"
 }
 
 $script:OnWingetComplete = {
@@ -533,19 +528,45 @@ function Start-WindowsUpdateJob {
     Start-ActivityJob -Name "Windows Update" -ScriptBlock $script:WuJobScript -ArgumentList @($global:ProjectRoot) -AutoId "wu" -OnComplete $script:OnWUComplete | Out-Null
 }
 
-# Descarga e instala las actualizaciones pendientes (no reinicia el equipo)
-function Start-WindowsUpdateInstall {
-    param([switch]$NoConfirm)
-
-    if (-not $NoConfirm) {
-        $msg = "La aplicacion buscara, descargara e instalara TODAS las actualizaciones pendientes de Windows.`n`nEl equipo NO se reiniciara automaticamente.`n`n¿Continuar?"
-        $confirm = [System.Windows.Forms.MessageBox]::Show($msg, "Instalar actualizaciones", "YesNo", "Warning")
-        if ($confirm -ne "Yes") { return }
+# Abre el apartado de Windows Update en Configuracion
+function Open-WindowsUpdateSettings {
+    Write-Log "Abriendo Windows Update en Configuracion..." "INFO"
+    try {
+        Start-Process "ms-settings:windowsupdate"
+        Update-UiStatus "Windows Update abierto en Configuracion"
     }
+    catch {
+        Write-Log "No se pudo abrir Windows Update: $_" "ERROR"
+        [System.Windows.Forms.MessageBox]::Show("No se pudo abrir Windows Update:`n$_", "Windows Update", "OK", "Warning") | Out-Null
+    }
+}
 
-    Set-AutoResult -Id "wu" -Status "Running" -Result "Instalando actualizaciones..."
-    Write-Log "Iniciando busqueda, descarga e instalacion de actualizaciones..." "INFO"
-    Start-ActivityJob -Name "Instalar actualizaciones" -ScriptBlock $script:WUInstallJobScript -ArgumentList @($global:ProjectRoot) -AutoId "wu" -OnComplete $script:OnWUInstallComplete | Out-Null
+# Limpia/reinicia los componentes de Windows Update (pide confirmacion)
+function Start-WindowsUpdateReset {
+    $confirm = [System.Windows.Forms.MessageBox]::Show(
+        "Se limpiaran los componentes de Windows Update:`n`n- Se detendran los servicios (wuauserv, bits, cryptsvc, msiserver)`n- Se renombraran las carpetas SoftwareDistribution y catroot2`n- Se reiniciaran los servicios`n`nEsto obliga a Windows Update a volver a descargar todo. Se recomienda reiniciar despues.`n`n¿Continuar?",
+        "Limpiar Windows Update",
+        "YesNo",
+        "Warning"
+    )
+    if ($confirm -ne "Yes") { return }
+
+    Write-Log "Iniciando limpieza de componentes de Windows Update..." "INFO"
+    Start-ActivityJob -Name "Limpiar Windows Update" -ScriptBlock $script:ResetWUJobScript -ArgumentList @($global:ProjectRoot) -OnComplete $script:OnResetComplete | Out-Null
+}
+
+# Activa Windows con la clave digital OEM (con confirmacion)
+function Start-WindowsActivation {
+    $confirm = [System.Windows.Forms.MessageBox]::Show(
+        "Se intentara activar Windows usando la clave digital OEM del equipo:`n`n  slmgr /ipk <clave>`n  slmgr /ato`n`n¿Continuar?",
+        "Activar Windows",
+        "YesNo",
+        "Question"
+    )
+    if ($confirm -ne "Yes") { return }
+
+    Write-Log "Iniciando activacion de Windows..." "INFO"
+    Start-ActivityJob -Name "Activar Windows" -ScriptBlock $script:ActivationJobScript -ArgumentList @($global:ProjectRoot) -OnComplete $script:OnActivationComplete | Out-Null
 }
 
 function Start-ManufacturerInstall {
@@ -624,6 +645,108 @@ function Invoke-SystemCommand {
     catch {
         Write-Log ("No se pudo ejecutar '{0}': {1}" -f $Command.name, $_) "ERROR"
         [System.Windows.Forms.MessageBox]::Show("No se pudo ejecutar '$($Command.name)':`n$_", "Comando", "OK", "Warning") | Out-Null
+    }
+}
+
+# Ejecuta una linea de comando libre (como el cuadro Ejecutar de Windows: Win+R)
+function Invoke-RawCommand {
+    param([string]$CommandLine)
+
+    if ([string]::IsNullOrWhiteSpace($CommandLine)) { return }
+
+    Write-Log ("Ejecutando (Run): {0}" -f $CommandLine) "DEBUG"
+    try {
+        # 'start' usa ShellExecute, igual que el cuadro Ejecutar
+        Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "start", '""', $CommandLine) -WindowStyle Hidden
+    }
+    catch {
+        Write-Log ("No se pudo ejecutar '{0}': {1}" -f $CommandLine, $_) "ERROR"
+        [System.Windows.Forms.MessageBox]::Show("No se pudo ejecutar:`n$CommandLine`n`n$_", "Comando", "OK", "Warning") | Out-Null
+    }
+}
+
+# Decide si ejecutar un comando de la lista o una linea escrita por el usuario
+function Invoke-CommandSelection {
+    $sel = $global:cmbCommands.SelectedItem
+    $text = "$($global:cmbCommands.Text)".Trim()
+
+    if ($sel -and $text -eq "$($sel.name)") {
+        Invoke-SystemCommand -Command $sel
+        Update-UiStatus "Ejecutando: $($sel.name)"
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        [System.Windows.Forms.MessageBox]::Show("Elija un comando de la lista o escriba uno.", "Comandos", "OK", "Warning") | Out-Null
+        return
+    }
+
+    Invoke-RawCommand -CommandLine $text
+    Update-UiStatus "Ejecutando: $text"
+}
+
+# Apaga o reinicia el equipo (con confirmacion)
+function Invoke-ShutdownAction {
+    param(
+        [ValidateSet("shutdown", "restart")]
+        [string]$Mode
+    )
+
+    $accion = if ($Mode -eq "restart") { "reiniciar" } else { "apagar" }
+    $confirm = [System.Windows.Forms.MessageBox]::Show(
+        "Se va a $accion el equipo en 15 segundos.`n`n¿Desea continuar?",
+        "Confirmar",
+        "YesNo",
+        "Warning"
+    )
+    if ($confirm -ne [System.Windows.Forms.DialogResult]::Yes) { return }
+
+    # Ruta completa y sin comentario (/c) para evitar problemas de comillas
+    $shutdownExe = Join-Path $env:SystemRoot "System32\shutdown.exe"
+    if (-not (Test-Path -LiteralPath $shutdownExe)) { $shutdownExe = "shutdown.exe" }
+
+    $flag = if ($Mode -eq "restart") { "/r" } else { "/s" }
+    $shutdownArgs = @($flag, "/t", "15")
+
+    Write-Log ("Accion solicitada: {0} -> {1} {2}" -f $accion, $shutdownExe, ($shutdownArgs -join " ")) "INFO"
+
+    try {
+        $proc = Start-Process -FilePath $shutdownExe -ArgumentList $shutdownArgs -WindowStyle Hidden -PassThru -ErrorAction Stop
+        Write-Log ("shutdown.exe iniciado (PID {0})." -f $proc.Id) "DEBUG"
+        Update-UiStatus ("El equipo se va a {0} en 15 segundos (shutdown /a para cancelar)." -f $accion)
+        [System.Windows.Forms.MessageBox]::Show("El equipo se va a $accion en 15 segundos.`n`nPuede cancelar con:  shutdown /a", "Aviso", "OK", "Information") | Out-Null
+    }
+    catch {
+        Write-Log ("No se pudo ejecutar el apagado/reinicio: {0}" -f $_) "ERROR"
+        [System.Windows.Forms.MessageBox]::Show("No se pudo ejecutar el apagado/reinicio:`n$_", "Error", "OK", "Error") | Out-Null
+    }
+}
+
+# Genera el reporte pidiendo el alias del tecnico
+function Save-DiagnosticReport {
+    try {
+        $alias = Show-InputDialog -Title "Guardar reporte" -Prompt "Alias del tecnico que guarda el reporte:" -DefaultValue ""
+        if ($null -eq $alias) { return }
+
+        $alias = "$alias".Trim()
+        if ([string]::IsNullOrWhiteSpace($alias)) { $alias = "tecnico" }
+        $safeAlias = ($alias -replace '[\\/:*?"<>|\s]', '_')
+
+        $info = Get-SystemInformation
+        Update-SystemInfoLabels -Info $info
+
+        $fileName = "Report-{0}-{1}.html" -f $safeAlias, (Get-Date -Format "yyyy-MM-dd-HH-mm-ss")
+        $reportPath = Join-Path (Join-Path $global:ProjectRoot "reports") $fileName
+        $autoForReport = @($global:AutoResults.Values)
+
+        New-DiagnosticReport -SystemInfo $info -Checklist $global:ManualChecklist -OutputPath $reportPath -AutoResults $autoForReport -WindowsUpdates $global:WindowsUpdateItems -Technician $alias
+        Write-Log ("Reporte generado por '{0}': {1}" -f $alias, $reportPath) "INFO"
+        [System.Windows.Forms.MessageBox]::Show("Reporte generado:`n$reportPath", "Reporte", "OK", "Information") | Out-Null
+        Update-UiStatus "Reporte generado: $fileName"
+    }
+    catch {
+        Write-Log ("Error generando reporte: {0}" -f $_) "ERROR"
+        [System.Windows.Forms.MessageBox]::Show("Error generando reporte:`n$_", "Reporte", "OK", "Error") | Out-Null
     }
 }
 
@@ -738,33 +861,55 @@ function New-MainForm {
 
     $global:lblManufacturer = New-Object System.Windows.Forms.Label
     $global:lblManufacturer.Location = New-Object System.Drawing.Point(10, 24)
-    $global:lblManufacturer.Size = New-Object System.Drawing.Size(480, 20)
+    $global:lblManufacturer.Size = New-Object System.Drawing.Size(360, 20)
     $infoPanel.Controls.Add($global:lblManufacturer)
 
     $global:lblModel = New-Object System.Windows.Forms.Label
     $global:lblModel.Location = New-Object System.Drawing.Point(10, 46)
-    $global:lblModel.Size = New-Object System.Drawing.Size(480, 20)
+    $global:lblModel.Size = New-Object System.Drawing.Size(360, 20)
     $infoPanel.Controls.Add($global:lblModel)
 
     $global:lblSerial = New-Object System.Windows.Forms.Label
     $global:lblSerial.Location = New-Object System.Drawing.Point(10, 68)
-    $global:lblSerial.Size = New-Object System.Drawing.Size(480, 20)
+    $global:lblSerial.Size = New-Object System.Drawing.Size(360, 20)
     $infoPanel.Controls.Add($global:lblSerial)
 
     $global:lblOS = New-Object System.Windows.Forms.Label
-    $global:lblOS.Location = New-Object System.Drawing.Point(500, 24)
-    $global:lblOS.Size = New-Object System.Drawing.Size(470, 20)
+    $global:lblOS.Location = New-Object System.Drawing.Point(380, 24)
+    $global:lblOS.Size = New-Object System.Drawing.Size(340, 20)
     $infoPanel.Controls.Add($global:lblOS)
 
     $global:lblCPU = New-Object System.Windows.Forms.Label
-    $global:lblCPU.Location = New-Object System.Drawing.Point(500, 46)
-    $global:lblCPU.Size = New-Object System.Drawing.Size(470, 20)
+    $global:lblCPU.Location = New-Object System.Drawing.Point(380, 46)
+    $global:lblCPU.Size = New-Object System.Drawing.Size(340, 20)
     $infoPanel.Controls.Add($global:lblCPU)
 
     $global:lblRAM = New-Object System.Windows.Forms.Label
-    $global:lblRAM.Location = New-Object System.Drawing.Point(500, 68)
-    $global:lblRAM.Size = New-Object System.Drawing.Size(470, 20)
+    $global:lblRAM.Location = New-Object System.Drawing.Point(380, 68)
+    $global:lblRAM.Size = New-Object System.Drawing.Size(340, 20)
     $infoPanel.Controls.Add($global:lblRAM)
+
+    $btnShutdown = New-Object System.Windows.Forms.Button
+    $btnShutdown.Text = "Apagar"
+    $btnShutdown.Location = New-Object System.Drawing.Point(728, 22)
+    $btnShutdown.Size = New-Object System.Drawing.Size(82, 30)
+    $infoPanel.Controls.Add($btnShutdown)
+
+    $btnRestart = New-Object System.Windows.Forms.Button
+    $btnRestart.Text = "Reiniciar"
+    $btnRestart.Location = New-Object System.Drawing.Point(812, 22)
+    $btnRestart.Size = New-Object System.Drawing.Size(82, 30)
+    $infoPanel.Controls.Add($btnRestart)
+
+    $btnReport = New-Object System.Windows.Forms.Button
+    $btnReport.Text = "Reporte"
+    $btnReport.Location = New-Object System.Drawing.Point(896, 22)
+    $btnReport.Size = New-Object System.Drawing.Size(82, 30)
+    $infoPanel.Controls.Add($btnReport)
+
+    $btnShutdown.Add_Click({ Invoke-ShutdownAction -Mode "shutdown" })
+    $btnRestart.Add_Click({ Invoke-ShutdownAction -Mode "restart" })
+    $btnReport.Add_Click({ Save-DiagnosticReport })
 
     # ----- Panel de Checklist (manual) -----
     $checklistPanel = New-Object System.Windows.Forms.Panel
@@ -902,16 +1047,18 @@ function New-MainForm {
     $form.Controls.Add($commandsPanel)
 
     $lblCommands = New-Object System.Windows.Forms.Label
-    $lblCommands.Text = "Comandos del sistema"
-    $lblCommands.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
+    $lblCommands.Text = "Comandos del sistema (elija de la lista o escriba y pulse Ejecutar)"
+    $lblCommands.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
     $lblCommands.Location = New-Object System.Drawing.Point(10, 5)
-    $lblCommands.Size = New-Object System.Drawing.Size(300, 18)
+    $lblCommands.Size = New-Object System.Drawing.Size(620, 18)
     $commandsPanel.Controls.Add($lblCommands)
 
     $global:cmbCommands = New-Object System.Windows.Forms.ComboBox
     $global:cmbCommands.Location = New-Object System.Drawing.Point(10, 26)
     $global:cmbCommands.Size = New-Object System.Drawing.Size(500, 25)
-    $global:cmbCommands.DropDownStyle = "DropDownList"
+    $global:cmbCommands.DropDownStyle = "DropDown"
+    $global:cmbCommands.AutoCompleteMode = "SuggestAppend"
+    $global:cmbCommands.AutoCompleteSource = "ListItems"
     $global:cmbCommands.DisplayMember = "name"
     $commandsPanel.Controls.Add($global:cmbCommands)
 
@@ -923,14 +1070,14 @@ function New-MainForm {
 
     $global:CommandItems = @()
 
-    $btnRunCommand.Add_Click({
-        $sel = $global:cmbCommands.SelectedItem
-        if (-not $sel) {
-            [System.Windows.Forms.MessageBox]::Show("Seleccione un comando.", "Comandos", "OK", "Warning") | Out-Null
-            return
+    $btnRunCommand.Add_Click({ Invoke-CommandSelection })
+
+    $global:cmbCommands.Add_KeyDown({
+        param($sender, $eventArgs)
+        if ($eventArgs.KeyCode -eq [System.Windows.Forms.Keys]::Enter) {
+            $eventArgs.SuppressKeyPress = $true
+            Invoke-CommandSelection
         }
-        Invoke-SystemCommand -Command $sel
-        Update-UiStatus "Ejecutando: $($sel.name)"
     })
 
     # ----- Panel de herramientas automaticas -----
@@ -950,19 +1097,31 @@ function New-MainForm {
     $btnMfr = New-Object System.Windows.Forms.Button
     $btnMfr.Text = "App fabricante"
     $btnMfr.Location = New-Object System.Drawing.Point(10, 28)
-    $btnMfr.Size = New-Object System.Drawing.Size(200, 30)
+    $btnMfr.Size = New-Object System.Drawing.Size(118, 30)
     $toolsPanel.Controls.Add($btnMfr)
 
-    $btnWUInstall = New-Object System.Windows.Forms.Button
-    $btnWUInstall.Text = "Instalar updates"
-    $btnWUInstall.Location = New-Object System.Drawing.Point(220, 28)
-    $btnWUInstall.Size = New-Object System.Drawing.Size(200, 30)
-    $toolsPanel.Controls.Add($btnWUInstall)
+    $btnWU = New-Object System.Windows.Forms.Button
+    $btnWU.Text = "Windows Update"
+    $btnWU.Location = New-Object System.Drawing.Point(132, 28)
+    $btnWU.Size = New-Object System.Drawing.Size(118, 30)
+    $toolsPanel.Controls.Add($btnWU)
+
+    $btnWUClean = New-Object System.Windows.Forms.Button
+    $btnWUClean.Text = "Limpiar WU"
+    $btnWUClean.Location = New-Object System.Drawing.Point(254, 28)
+    $btnWUClean.Size = New-Object System.Drawing.Size(118, 30)
+    $toolsPanel.Controls.Add($btnWUClean)
+
+    $btnActivate = New-Object System.Windows.Forms.Button
+    $btnActivate.Text = "Activar Windows"
+    $btnActivate.Location = New-Object System.Drawing.Point(376, 28)
+    $btnActivate.Size = New-Object System.Drawing.Size(118, 30)
+    $toolsPanel.Controls.Add($btnActivate)
 
     $btnDiag = New-Object System.Windows.Forms.Button
     $btnDiag.Text = "Diagnosticos"
-    $btnDiag.Location = New-Object System.Drawing.Point(430, 28)
-    $btnDiag.Size = New-Object System.Drawing.Size(200, 30)
+    $btnDiag.Location = New-Object System.Drawing.Point(498, 28)
+    $btnDiag.Size = New-Object System.Drawing.Size(118, 30)
     $toolsPanel.Controls.Add($btnDiag)
 
     $btnMfr.Add_Click({
@@ -997,7 +1156,11 @@ function New-MainForm {
         }
     })
 
-    $btnWUInstall.Add_Click({ Start-WindowsUpdateInstall })
+    $btnWU.Add_Click({ Open-WindowsUpdateSettings })
+
+    $btnWUClean.Add_Click({ Start-WindowsUpdateReset })
+
+    $btnActivate.Add_Click({ Start-WindowsActivation })
 
     $btnDiag.Add_Click({
         foreach ($id in @("storage", "memory", "network", "hardware")) { Invoke-AutoAction -Id $id }
@@ -1011,7 +1174,7 @@ function New-MainForm {
     $form.Controls.Add($appsPanel)
 
     $lblApps = New-Object System.Windows.Forms.Label
-    $lblApps.Text = "Aplicaciones de diagnostico (carpeta apps/)"
+    $lblApps.Text = "Aplicaciones de diagnostico (apps/: .exe/.bat/.cmd)"
     $lblApps.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
     $lblApps.Location = New-Object System.Drawing.Point(10, 5)
     $lblApps.Size = New-Object System.Drawing.Size(610, 18)
@@ -1209,31 +1372,25 @@ function New-MainForm {
     $btnRunAll = New-Object System.Windows.Forms.Button
     $btnRunAll.Text = "Ejecutar todo"
     $btnRunAll.Location = New-Object System.Drawing.Point(10, 799)
-    $btnRunAll.Size = New-Object System.Drawing.Size(190, 30)
+    $btnRunAll.Size = New-Object System.Drawing.Size(230, 30)
     $form.Controls.Add($btnRunAll)
 
     $btnReset = New-Object System.Windows.Forms.Button
-    $btnReset.Text = "Reiniciar"
-    $btnReset.Location = New-Object System.Drawing.Point(205, 799)
-    $btnReset.Size = New-Object System.Drawing.Size(190, 30)
+    $btnReset.Text = "Reiniciar checklist"
+    $btnReset.Location = New-Object System.Drawing.Point(250, 799)
+    $btnReset.Size = New-Object System.Drawing.Size(230, 30)
     $form.Controls.Add($btnReset)
 
     $btnClearActivity = New-Object System.Windows.Forms.Button
     $btnClearActivity.Text = "Limpiar actividad"
-    $btnClearActivity.Location = New-Object System.Drawing.Point(400, 799)
-    $btnClearActivity.Size = New-Object System.Drawing.Size(190, 30)
+    $btnClearActivity.Location = New-Object System.Drawing.Point(490, 799)
+    $btnClearActivity.Size = New-Object System.Drawing.Size(230, 30)
     $form.Controls.Add($btnClearActivity)
-
-    $btnReport = New-Object System.Windows.Forms.Button
-    $btnReport.Text = "Generar reporte"
-    $btnReport.Location = New-Object System.Drawing.Point(595, 799)
-    $btnReport.Size = New-Object System.Drawing.Size(190, 30)
-    $form.Controls.Add($btnReport)
 
     $btnExit = New-Object System.Windows.Forms.Button
     $btnExit.Text = "Salir"
-    $btnExit.Location = New-Object System.Drawing.Point(790, 799)
-    $btnExit.Size = New-Object System.Drawing.Size(190, 30)
+    $btnExit.Location = New-Object System.Drawing.Point(730, 799)
+    $btnExit.Size = New-Object System.Drawing.Size(230, 30)
     $form.Controls.Add($btnExit)
 
     $btnRunAll.Add_Click({ Invoke-AllAutoActions })
@@ -1250,24 +1407,6 @@ function New-MainForm {
 
     $btnClearActivity.Add_Click({
         if ($global:ActivityBox) { $global:ActivityBox.Clear() }
-    })
-
-    $btnReport.Add_Click({
-        try {
-            $info = Get-SystemInformation
-            Update-SystemInfoLabels -Info $info
-
-            $fileName = "Report-{0}.html" -f (Get-Date -Format "yyyy-MM-dd-HH-mm-ss")
-            $reportPath = Join-Path (Join-Path $global:ProjectRoot "reports") $fileName
-            $autoForReport = @($global:AutoResults.Values)
-
-            New-DiagnosticReport -SystemInfo $info -Checklist $global:ManualChecklist -OutputPath $reportPath -AutoResults $autoForReport -WindowsUpdates $global:WindowsUpdateItems
-            [System.Windows.Forms.MessageBox]::Show("Reporte generado:`n$reportPath", "Reporte", "OK", "Information") | Out-Null
-            Update-UiStatus "Reporte generado: $fileName"
-        }
-        catch {
-            [System.Windows.Forms.MessageBox]::Show("Error generando reporte:`n$_", "Reporte", "OK", "Error") | Out-Null
-        }
     })
 
     $btnExit.Add_Click({ $form.Close() })

@@ -28,12 +28,11 @@ $moduleNames = @(
     "Manufacturer",
     "Diagnostics",
     "Applications",
-    "Camera",
-    "Microphone",
     "Checklist",
     "Reports",
     "WiFi",
     "Drivers",
+    "Activation",
     "GUI"
 )
 
@@ -98,7 +97,7 @@ function Start-SebitAssistan {
     }
 
     # Crear carpetas necesarias
-    $directories = @("logs", "reports", "apps", "diagnostics", "wifi-profiles", "Drivers")
+    $directories = @("logs", "reports", "apps", "wifi-profiles", "Drivers")
     foreach ($dir in $directories) {
         $path = Join-Path $global:ProjectRoot $dir
         if (-not (Test-Path -LiteralPath $path)) {

@@ -100,11 +100,12 @@ function Invoke-DiagnosticApplication {
         }
 
         Write-Log "Ejecutando aplicacion: $full" "INFO"
+        $workDir = Split-Path -Parent $full
         if ([string]::IsNullOrWhiteSpace($Arguments)) {
-            Start-Process -FilePath $full
+            Start-Process -FilePath $full -WorkingDirectory $workDir
         }
         else {
-            Start-Process -FilePath $full -ArgumentList $Arguments
+            Start-Process -FilePath $full -WorkingDirectory $workDir -ArgumentList $Arguments
         }
         return $true
     }

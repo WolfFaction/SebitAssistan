@@ -23,7 +23,9 @@ function New-DiagnosticReport {
 
         [array]$AutoResults = @(),
 
-        [array]$WindowsUpdates = @()
+        [array]$WindowsUpdates = @(),
+
+        [string]$Technician = ""
     )
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
@@ -64,6 +66,7 @@ function New-DiagnosticReport {
     <div class="container">
         <h1>Reporte de Diagnostico - SebitAssistan</h1>
         <p>Generado: $timestamp</p>
+        <p>Tecnico: $(ConvertTo-HtmlSafe $Technician)</p>
         <p>Tareas completadas: $completed / $total</p>
 
         <h2>Informacion del equipo</h2>
@@ -178,7 +181,7 @@ function New-DiagnosticReport {
 
     $html += @"
         <div class="footer">
-            <p>SebitAssistan v2.0.8 - Windows Diagnostic Assistant</p>
+            <p>SebitAssistan v2.1.0 - Windows Diagnostic Assistant</p>
         </div>
     </div>
 </body>

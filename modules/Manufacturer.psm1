@@ -84,19 +84,6 @@ function Get-ManufacturerEntry {
     return $null
 }
 
-# Compatibilidad: devuelve solo el nombre de la aplicacion
-function Get-ManufacturerApplication {
-    [CmdletBinding()]
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Manufacturer
-    )
-
-    $entry = Get-ManufacturerEntry -Manufacturer $Manufacturer
-    if ($entry) { return $entry.Application }
-    return $null
-}
-
 function Test-WingetAvailable {
     [CmdletBinding()]
     param()
@@ -165,4 +152,4 @@ function Get-ManufacturerInstallPlan {
     }
 }
 
-Export-ModuleMember -Function Get-ManufacturerEntry, Get-ManufacturerApplication, Test-WingetAvailable, Get-ManufacturerInstallPlan
+Export-ModuleMember -Function Get-ManufacturerEntry, Test-WingetAvailable, Get-ManufacturerInstallPlan
